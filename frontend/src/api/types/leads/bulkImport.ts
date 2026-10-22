@@ -4,7 +4,7 @@ export interface LeadsBulkImportInput {
     lastName: string
     email: string
     jobTitle?: string
-    countryCode?: string
+    countryCode?: string | null
     companyName?: string
   }[]
 }
@@ -14,8 +14,14 @@ export interface LeadsBulkImportOutput {
   importedCount: number
   duplicatesSkipped: number
   invalidLeads: number
+  warnings: Array<{
+    inputIndex: number
+    field: 'countryCode'
+    message: string
+  }>
   errors: Array<{
-    lead: any
+    inputIndex: number
+    lead: unknown
     error: string
   }>
 }

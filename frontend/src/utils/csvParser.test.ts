@@ -63,6 +63,8 @@ John,Doe,john.doe@example.com,Developer,US,Tech Corp`
       email: 'john.doe@example.com',
       jobTitle: 'Developer',
       countryCode: 'US',
+      originalCountryCode: 'US',
+      warnings: [],
       companyName: 'Tech Corp',
       isValid: true,
       errors: [],
@@ -150,7 +152,7 @@ John,Doe,john@example.com,,`
 
     expect(result).toHaveLength(1)
     expect(result[0].jobTitle).toBeUndefined()
-    expect(result[0].countryCode).toBeUndefined()
+    expect(result[0].countryCode).toBeNull()
     expect(result[0].isValid).toBe(true)
   })
 
@@ -223,4 +225,58 @@ Jane,Johnson,jane@example.com`
     expect(result[0].email).toBe('john@example.com')
     expect(result[0].isValid).toBe(true)
   })
+})
+
+describe('country normalization and source rows', () => {
+  it.each([
+    [' us ', 'US', false],
+    ['uk', 'GB', false],
+    ['TV', 'TV', false],
+    ['XXX', null, true],
+    ['12', null, true],
+    ['ZZ', null, true],
+    ['', null, false],
+  ])('normalizes %j without rejecting the lead', (input, countryCode, warned) => {
+    const [lead] = parseCsv(`firstName,lastName,email,countryCode\nJane,Doe,jane@example.com,${input}`)
+    expect(lead.countryCode).toBe(countryCode)
+    expect(lead.isValid).toBe(true)
+    expect(lead.errors).toEqual([])
+    expect(lead.warnings.length > 0).toBe(warned)
+    expect(lead.originalCountryCode).toBe(input.trim())
+  })
+
+  it('keeps country warnings separate from required-field errors', () => {
+    const [lead] = parseCsv('firstName,lastName,email,countryCode\nJane,,bad-email,XXX')
+    expect(lead.isValid).toBe(false)
+    expect(lead.warnings).toHaveLength(1)
+    expect(lead.errors).toEqual(['Last name is required', 'Invalid email format'])
+  })
+
+  it.each(['\n', '\r\n', '\r'])(
+    'tracks physical lines with BOM, empty lines, and quoted multiline fields',
+    (newline) => {
+      const csv = [
+        '\ufefffirstName;lastName;email;countryCode;companyName',
+        '',
+        'Iñaki;Álvarez;i@example.com; es ;"Company',
+        'with ""quotes"""',
+        '',
+        'Jane;Doe;j@example.com;XXX;Other',
+      ].join(newline)
+      const leads = parseCsv(csv)
+      expect(leads.map((lead) => lead.rowIndex)).toEqual([3, 6])
+      expect(leads[0].firstName).toBe('Iñaki')
+      expect(leads[0].companyName).toBe(`Company${newline}with "quotes"`)
+      expect(leads[1].warnings).toHaveLength(1)
+    }
+  )
+})
+
+it.each(['\n', '\r\n', '\r'])('preserves leading blank-line support and source offsets (%j)', (newline) => {
+  const [lead] = parseCsv(
+    ['\ufeff', '', 'firstName,lastName,email,countryCode', 'Jane,Doe,j@example.com,XXX'].join(newline)
+  )
+  expect(lead.rowIndex).toBe(4)
+  expect(lead.isValid).toBe(true)
+  expect(lead.countryCode).toBeNull()
 })
