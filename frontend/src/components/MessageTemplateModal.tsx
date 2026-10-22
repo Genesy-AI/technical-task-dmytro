@@ -18,6 +18,8 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
   selectedLeadsCount,
 }) => {
   const [template, setTemplate] = useState('')
+  const [fieldSearch, setFieldSearch] = useState('')
+  const selectionRef = useRef({ start: 0, end: 0 })
   const [generationResult, setGenerationResult] = useState<{
     success: boolean
     generatedCount: number
@@ -40,6 +42,8 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
         toast.success(message)
         onClose()
         setTemplate('')
+        setFieldSearch('')
+        selectionRef.current = { start: 0, end: 0 }
         setGenerationResult(null)
       } else {
         const successMessage =
@@ -74,6 +78,8 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
     if (!generateMessagesMutation.isPending) {
       onClose()
       setTemplate('')
+      setFieldSearch('')
+      selectionRef.current = { start: 0, end: 0 }
       setGenerationResult(null)
     }
   }, [generateMessagesMutation.isPending, onClose])
@@ -106,19 +112,33 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
     }
   }, [isOpen, handleClose])
 
-  const availableFields = ['firstName', 'lastName', 'email', 'jobTitle', 'companyName', 'countryCode']
+  const availableFields = [
+    ['firstName', 'First name'],
+    ['lastName', 'Last name'],
+    ['email', 'Email'],
+    ['jobTitle', 'Job title'],
+    ['companyName', 'Company'],
+    ['countryCode', 'Country code'],
+    ['phoneNumber', 'Phone number'],
+    ['yearsAtCompany', 'Years at company'],
+    ['linkedinUrl', 'LinkedIn profile'],
+  ]
+  const visibleFields = availableFields.filter(([field, label]) =>
+    `${field} ${label}`.toLowerCase().includes(fieldSearch.trim().toLowerCase())
+  )
 
   const insertField = (field: string) => {
     if (textareaRef.current) {
       const textarea = textareaRef.current
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
+      const { start, end } = selectionRef.current
       const newTemplate = template.substring(0, start) + `{${field}}` + template.substring(end)
       setTemplate(newTemplate)
 
       setTimeout(() => {
         textarea.focus()
-        textarea.setSelectionRange(start + field.length + 2, start + field.length + 2)
+        const cursor = start + field.length + 2
+        textarea.setSelectionRange(cursor, cursor)
+        selectionRef.current = { start: cursor, end: cursor }
       }, 0)
     }
   }
@@ -156,24 +176,60 @@ export const MessageTemplateModal: FC<MessageTemplateModalProps> = ({
                 Message Template
               </label>
               <div className="space-y-3">
-                <div className="flex flex-wrap gap-2">
-                  <span className="text-sm text-gray-600">Insert field:</span>
-                  {availableFields.map((field) => (
-                    <button
-                      key={field}
-                      type="button"
-                      onClick={() => insertField(field)}
-                      className="px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200 transition-colors"
-                    >
-                      {`{${field}}`}
-                    </button>
-                  ))}
+                <div>
+                  <label htmlFor="template-field-search" className="block text-sm text-gray-600 mb-1">
+                    Insert field
+                  </label>
+                  <input
+                    id="template-field-search"
+                    type="search"
+                    value={fieldSearch}
+                    onChange={(event) => setFieldSearch(event.target.value)}
+                    placeholder="Search fields"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  />
+                  <div
+                    className="mt-2 max-h-36 overflow-y-auto flex flex-col gap-1"
+                    aria-label="Template fields"
+                  >
+                    {visibleFields.map(([field, label]) => (
+                      <button
+                        key={field}
+                        type="button"
+                        data-template-field={field}
+                        onClick={() => insertField(field)}
+                        className="px-2 py-1 text-sm text-left bg-blue-50 text-blue-800 rounded hover:bg-blue-100 focus-visible:ring-2 focus-visible:ring-blue-500"
+                      >
+                        {label} <span className="text-xs">{`{${field}}`}</span>
+                      </button>
+                    ))}
+                    {visibleFields.length === 0 && (
+                      <p role="status" className="text-sm text-gray-500">
+                        No matching fields.
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <textarea
                   ref={textareaRef}
                   id="message-template"
                   value={template}
-                  onChange={(e) => setTemplate(e.target.value)}
+                  onChange={(e) => {
+                    setTemplate(e.target.value)
+                    selectionRef.current = { start: e.target.selectionStart, end: e.target.selectionEnd }
+                  }}
+                  onSelect={(e) => {
+                    selectionRef.current = {
+                      start: e.currentTarget.selectionStart,
+                      end: e.currentTarget.selectionEnd,
+                    }
+                  }}
+                  onBlur={(e) => {
+                    selectionRef.current = {
+                      start: e.currentTarget.selectionStart,
+                      end: e.currentTarget.selectionEnd,
+                    }
+                  }}
                   placeholder="Enter your message template here. Use {fieldName} to insert dynamic values.&#10;&#10;Example: Hi {firstName}, I noticed you work at {companyName} as a {jobTitle}. Would you be interested in..."
                   className="w-full h-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                   required

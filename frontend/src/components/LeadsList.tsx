@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FC, useState } from 'react'
 import toast from 'react-hot-toast'
 import { api } from '../api'
+import { isLinkedinUrl } from '../utils/leadFields'
 import { MessageTemplateModal } from './MessageTemplateModal'
 import { CsvImportModal } from './CsvImportModal'
 
@@ -234,6 +235,9 @@ export const LeadsList: FC = () => {
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
                   Country
                 </th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Phone</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">Years at company</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">LinkedIn</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50">
                   Message
                 </th>
@@ -274,6 +278,15 @@ export const LeadsList: FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">{lead.countryCode || '-'}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">{lead.phoneNumber ?? '—'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">{lead.yearsAtCompany ?? '—'}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    {lead.linkedinUrl && isLinkedinUrl(lead.linkedinUrl) ? (
+                      <a href={lead.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline" aria-label={`LinkedIn profile for ${lead.firstName} ${lead.lastName || ''}`}>
+                        LinkedIn profile
+                      </a>
+                    ) : '—'}
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-900 max-w-xs truncate" title={lead.message || ''}>

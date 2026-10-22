@@ -4,6 +4,7 @@ import { Connection, Client } from '@temporalio/client'
 import { verifyEmailWorkflow } from './workflows'
 import { generateMessageFromTemplate } from './utils/messageGenerator'
 import { runTemporalWorker } from './worker'
+import { LeadFields, normalizeLeadFields } from './utils/leadFields'
 const prisma = new PrismaClient()
 const app = express()
 app.use(express.json())
@@ -11,7 +12,7 @@ app.use(express.json())
 app.use(function (req, res, next) {
   res.header('Access-Control-Allow-Origin', '*')
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept')
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS')
 
   if (req.method === 'OPTIONS') {
     res.sendStatus(200)
@@ -22,18 +23,23 @@ app.use(function (req, res, next) {
 })
 
 app.post('/leads', async (req: Request, res: Response) => {
-  const { name, lastName, email } = req.body
-
-  if (!name || !lastName || !email) {
-    return res.status(400).json({ error: 'firstName, lastName, and email are required' })
+  const body = req.body
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Request body must be an object' })
   }
-
+  const firstName = body.firstName !== undefined ? body.firstName : body.name
+  const { lastName, email } = body
+  if (![firstName, lastName, email].every((value) => typeof value === 'string' && value.trim())) {
+    return res.status(400).json({ error: 'firstName, lastName, and email are required strings' })
+  }
+  let fields: LeadFields
+  try {
+    fields = normalizeLeadFields(body)
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid lead fields' })
+  }
   const lead = await prisma.lead.create({
-    data: {
-      firstName: String(name),
-      lastName: String(lastName),
-      email: String(email),
-    },
+    data: { firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(), ...fields },
   })
   res.json(lead)
 })
@@ -56,16 +62,28 @@ app.get('/leads', async (req: Request, res: Response) => {
 
 app.patch('/leads/:id', async (req: Request, res: Response) => {
   const { id } = req.params
-  const { name, email } = req.body
-  const lead = await prisma.lead.update({
-    where: {
-      id: Number(id),
-    },
-    data: {
-      firstName: String(name),
-      email: String(email),
-    },
-  })
+  const body = req.body
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ error: 'Request body must be an object' })
+  }
+  const data: LeadFields & { firstName?: string; email?: string } = {}
+  const firstName = body.firstName !== undefined ? body.firstName : body.name
+  for (const [key, value] of [
+    ['firstName', firstName],
+    ['email', body.email],
+  ] as const) {
+    if (value === undefined) continue
+    if (typeof value !== 'string' || !value.trim()) {
+      return res.status(400).json({ error: `${key} must be a non-empty string` })
+    }
+    data[key] = value.trim()
+  }
+  try {
+    Object.assign(data, normalizeLeadFields(body))
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid lead fields' })
+  }
+  const lead = await prisma.lead.update({ where: { id: Number(id) }, data })
   res.json(lead)
 })
 
@@ -217,10 +235,11 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
     })
 
     let importedCount = 0
-    const errors: Array<{ lead: any; error: string }> = []
+    const errors: Array<{ inputIndex: number; lead: unknown; error: string }> = []
 
     for (const lead of uniqueLeads) {
       try {
+        const fields = normalizeLeadFields(lead)
         await prisma.lead.create({
           data: {
             firstName: lead.firstName.trim(),
@@ -229,11 +248,13 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
             jobTitle: lead.jobTitle ? lead.jobTitle.trim() : null,
             countryCode: lead.countryCode ? lead.countryCode.trim() : null,
             companyName: lead.companyName ? lead.companyName.trim() : null,
+            ...fields,
           },
         })
         importedCount++
       } catch (error) {
         errors.push({
+          inputIndex: leads.indexOf(lead),
           lead: lead,
           error: error instanceof Error ? error.message : 'Unknown error',
         })

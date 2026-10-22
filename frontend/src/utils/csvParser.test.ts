@@ -60,6 +60,9 @@ John,Doe,john.doe@example.com,Developer,US,Tech Corp`
     expect(result[0]).toEqual({
       firstName: 'John',
       lastName: 'Doe',
+      phoneNumber: null,
+      yearsAtCompany: null,
+      linkedinUrl: null,
       email: 'john.doe@example.com',
       jobTitle: 'Developer',
       countryCode: 'US',
