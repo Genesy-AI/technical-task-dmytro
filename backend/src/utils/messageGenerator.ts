@@ -1,4 +1,7 @@
 export interface Lead {
+  phoneNumber?: string | null
+  yearsAtCompany?: number | null
+  linkedinUrl?: string | null
   firstName: string
   lastName?: string | null
   email?: string | null
@@ -11,6 +14,9 @@ export function generateMessageFromTemplate(template: string, lead: Lead): strin
   let message = template
 
   const availableFields = {
+    phoneNumber: lead.phoneNumber,
+    yearsAtCompany: lead.yearsAtCompany,
+    linkedinUrl: lead.linkedinUrl,
     firstName: lead.firstName,
     lastName: lead.lastName,
     email: lead.email,
@@ -31,7 +37,7 @@ export function generateMessageFromTemplate(template: string, lead: Lead): strin
         throw new Error(`Missing required field: ${fieldName}`)
       }
 
-      message = message.replace(new RegExp(`\\{${fieldName}\\}`, 'g'), fieldValue)
+      message = message.replace(new RegExp(`\\{${fieldName}\\}`, 'g'), () => String(fieldValue))
     } else {
       throw new Error(`Unknown field in template: ${fieldName}`)
     }

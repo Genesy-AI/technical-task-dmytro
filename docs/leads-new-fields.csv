@@ -1,0 +1,5 @@
+firstName,lastName,email,jobTitle,countryCode,companyName,phoneNumber,yearsAtCompany,linkedinUrl
+Ada,Newfields,ada.newfields@example.com,Engineer,GB,Example Labs,+44 (20) 1234 x5,0,https://www.linkedin.com/in/ada-newfields
+Grace,Newfields,grace.newfields@example.com,Researcher,US,Example Labs,001-555-0100,10,https://linkedin.com/in/grace-newfields
+Missing,Newfields,missing.newfields@example.com,,US,Example Labs,,,
+Invalid,Newfields,invalid.newfields@example.com,,US,Example Labs,+1-555-0199,101,https://linkedin.com.evil.test/in/invalid

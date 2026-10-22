@@ -100,11 +100,14 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
         jobTitle: lead.jobTitle || undefined,
         countryCode: lead.countryCode || undefined,
         companyName: lead.companyName || undefined,
+        phoneNumber: lead.phoneNumber,
+        yearsAtCompany: lead.yearsAtCompany,
+        linkedinUrl: lead.linkedinUrl,
       }))
 
       return api.leads.bulkImport({ leads: leadsToImport })
     },
-    onSuccess: (data) => {
+    onSuccess: (data, submittedLeads) => {
       queryClient.invalidateQueries({ queryKey: ['leads', 'getMany'] })
 
       let message = `Successfully imported ${data.importedCount} leads!`
@@ -115,7 +118,15 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
         message += ` (${data.invalidLeads} invalid leads excluded)`
       }
 
-      toast.success(message)
+      if (data.errors.length) {
+        const sourceRows = submittedLeads.filter((lead) => lead.isValid)
+        toast.error(
+          `${message} ${data.errors.map((error) => `Row ${sourceRows[error.inputIndex].rowIndex}: ${error.error}`).join('; ')}`,
+          { duration: 10000 }
+        )
+      } else {
+        toast.success(message)
+      }
       onClose()
       setCsvData([])
     },
@@ -238,7 +249,7 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                   </p>
                   <p className="text-sm text-gray-500">
                     CSV must include: firstName, lastName, email (required). Optional: jobTitle, countryCode,
-                    companyName
+                    companyName, phoneNumber, yearsAtCompany (or yearsInRole), linkedinUrl
                   </p>
                 </div>
               )}
@@ -285,6 +296,15 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                         Company
                       </th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                        Phone
+                      </th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                        Years at company
+                      </th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                        LinkedIn
+                      </th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                         Errors
                       </th>
                     </tr>
@@ -292,7 +312,7 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                   <tbody className="bg-white divide-y divide-gray-200">
                     {csvData.map((lead, index) => (
                       <tr key={index} className={lead.isValid ? 'bg-white' : 'bg-red-50'}>
-                        <td className="px-3 py-2 text-sm text-gray-900">{lead.rowIndex - 1}</td>
+                        <td className="px-3 py-2 text-sm text-gray-900">{lead.rowIndex}</td>
                         <td className="px-3 py-2">
                           {lead.isValid ? (
                             <span className="inline-flex px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
@@ -309,6 +329,9 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                         </td>
                         <td className="px-3 py-2 text-sm text-gray-900">{lead.email || '-'}</td>
                         <td className="px-3 py-2 text-sm text-gray-900">{lead.companyName || '-'}</td>
+                        <td className="px-3 py-2 text-sm whitespace-nowrap">{lead.phoneNumber ?? '—'}</td>
+                        <td className="px-3 py-2 text-sm">{lead.yearsAtCompany ?? '—'}</td>
+                        <td className="px-3 py-2 text-sm">{lead.linkedinUrl ?? '—'}</td>
                         <td className="px-3 py-2 text-sm text-red-600">{lead.errors.join(', ') || '-'}</td>
                       </tr>
                     ))}

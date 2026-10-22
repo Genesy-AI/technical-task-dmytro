@@ -2,8 +2,4 @@ export type LeadsGetOneInput = {
   id: number
 }
 
-export type LeadsGetOneOutput = {
-  id: number
-  firstName: string
-  email: string
-}
+export type LeadsGetOneOutput = import('./getMany').LeadsGetManyOutput[number]

@@ -3,6 +3,9 @@ export interface LeadsBulkImportInput {
     firstName: string
     lastName: string
     email: string
+    phoneNumber?: string | null
+    yearsAtCompany?: number | null
+    linkedinUrl?: string | null
     jobTitle?: string
     countryCode?: string
     companyName?: string
@@ -15,7 +18,8 @@ export interface LeadsBulkImportOutput {
   duplicatesSkipped: number
   invalidLeads: number
   errors: Array<{
-    lead: any
+    inputIndex: number
+    lead: unknown
     error: string
   }>
 }
