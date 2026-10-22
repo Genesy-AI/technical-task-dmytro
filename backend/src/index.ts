@@ -4,6 +4,7 @@ import { Connection, Client } from '@temporalio/client'
 import { verifyEmailWorkflow } from './workflows'
 import { generateMessageFromTemplate } from './utils/messageGenerator'
 import { runTemporalWorker } from './worker'
+import { normalizeCountryCode } from './utils/countryCode'
 const prisma = new PrismaClient()
 const app = express()
 app.use(express.json())
@@ -179,7 +180,7 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
   }
 
   try {
-    const validLeads = leads.filter((lead) => {
+    const validLeads = leads.map((lead, inputIndex) => ({ lead, inputIndex })).filter(({ lead }) => {
       return (
         lead.firstName &&
         lead.lastName &&
@@ -201,7 +202,7 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
 
     const existingLeads = await prisma.lead.findMany({
       where: {
-        OR: validLeads.map((lead) => ({
+        OR: validLeads.map(({ lead }) => ({
           AND: [{ firstName: lead.firstName.trim() }, { lastName: lead.lastName.trim() }],
         })),
       },
@@ -211,29 +212,39 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
       existingLeads.map((lead) => `${lead.firstName.toLowerCase()}_${(lead.lastName || '').toLowerCase()}`)
     )
 
-    const uniqueLeads = validLeads.filter((lead) => {
+    const uniqueLeads = validLeads.filter(({ lead }) => {
       const key = `${lead.firstName.toLowerCase()}_${lead.lastName.toLowerCase()}`
       return !leadKeys.has(key)
     })
 
     let importedCount = 0
-    const errors: Array<{ lead: any; error: string }> = []
+    const errors: Array<{ inputIndex: number; lead: unknown; error: string }> = []
+    const warnings: Array<{ inputIndex: number; field: 'countryCode'; message: string }> = []
 
-    for (const lead of uniqueLeads) {
+    for (const { lead, inputIndex } of uniqueLeads) {
       try {
+        const country = normalizeCountryCode(lead.countryCode)
         await prisma.lead.create({
           data: {
             firstName: lead.firstName.trim(),
             lastName: lead.lastName.trim(),
             email: lead.email.trim(),
             jobTitle: lead.jobTitle ? lead.jobTitle.trim() : null,
-            countryCode: lead.countryCode ? lead.countryCode.trim() : null,
+            countryCode: country.countryCode,
             companyName: lead.companyName ? lead.companyName.trim() : null,
           },
         })
         importedCount++
+        if (country.warning) {
+          warnings.push({
+            inputIndex,
+            field: 'countryCode',
+            message: `${country.warning}; imported without country.`,
+          })
+        }
       } catch (error) {
         errors.push({
+          inputIndex,
           lead: lead,
           error: error instanceof Error ? error.message : 'Unknown error',
         })
@@ -246,6 +257,7 @@ app.post('/leads/bulk', async (req: Request, res: Response) => {
       duplicatesSkipped: validLeads.length - uniqueLeads.length,
       invalidLeads: leads.length - validLeads.length,
       errors,
+      warnings,
     })
   } catch (error) {
     console.error('Error importing leads:', error)

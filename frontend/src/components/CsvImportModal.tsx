@@ -12,6 +12,11 @@ interface CsvImportModalProps {
 
 export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => {
   const [csvData, setCsvData] = useState<CsvLead[]>([])
+  const [importResult, setImportResult] = useState<{
+    summary: string
+    warnings: string[]
+    errors: string[]
+  } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -98,13 +103,13 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
         lastName: lead.lastName,
         email: lead.email,
         jobTitle: lead.jobTitle || undefined,
-        countryCode: lead.countryCode || undefined,
+        countryCode: lead.originalCountryCode,
         companyName: lead.companyName || undefined,
       }))
 
       return api.leads.bulkImport({ leads: leadsToImport })
     },
-    onSuccess: (data) => {
+    onSuccess: (data, submittedLeads) => {
       queryClient.invalidateQueries({ queryKey: ['leads', 'getMany'] })
 
       let message = `Successfully imported ${data.importedCount} leads!`
@@ -115,16 +120,29 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
         message += ` (${data.invalidLeads} invalid leads excluded)`
       }
 
-      toast.success(message)
-      onClose()
-      setCsvData([])
+      const sourceRows = submittedLeads.filter((lead) => lead.isValid)
+      const warnings = data.warnings.map(
+        (warning) => `Row ${sourceRows[warning.inputIndex].rowIndex}: ${warning.message}`
+      )
+      const errors = data.errors.map(
+        (error) => `Row ${sourceRows[error.inputIndex].rowIndex}: ${error.error}`
+      )
+      if (errors.length) message += ` (${errors.length} failed to import)`
+      if (warnings.length || errors.length) {
+        setImportResult({ summary: message, warnings, errors })
+      } else {
+        toast.success(message)
+        onClose()
+        setCsvData([])
+      }
     },
     onError: () => {
-      toast.error('Error importing leads. Please try again.')
+      toast.error('Could not confirm import results. Refresh the table before retrying.')
     },
   })
 
   const handleImport = () => {
+    if (importMutation.isPending || importResult) return
     if (stats.valid === 0) {
       toast.error('No valid leads to import')
       return
@@ -135,6 +153,7 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
   const handleClose = useCallback(() => {
     if (!importMutation.isPending) {
       setCsvData([])
+      setImportResult(null)
       onClose()
     }
   }, [importMutation.isPending, onClose])
@@ -179,6 +198,7 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
             <h3 className="text-lg font-medium text-gray-900">Import Leads from CSV</h3>
             <button
               onClick={handleClose}
+              aria-label="Close import"
               disabled={importMutation.isPending}
               className="text-gray-400 hover:text-gray-500 focus:outline-none disabled:opacity-50"
             >
@@ -190,7 +210,31 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
         </div>
 
         <div className="px-6 py-4">
-          {csvData.length === 0 ? (
+          {importResult ? (
+            <div role="status" className="space-y-3">
+              <p>{importResult.summary}</p>
+              {importResult.warnings.length > 0 && (
+                <div className="bg-amber-50 p-3 text-amber-900">
+                  <h4 className="font-medium">Country warnings</h4>
+                  <ul className="list-disc pl-5">
+                    {importResult.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {importResult.errors.length > 0 && (
+                <div className="bg-red-50 p-3 text-red-800">
+                  <h4 className="font-medium">Import errors</h4>
+                  <ul className="list-disc pl-5">
+                    {importResult.errors.map((error) => (
+                      <li key={error}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : csvData.length === 0 ? (
             <div
               className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
                 isDragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300'
@@ -285,14 +329,17 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                         Company
                       </th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                        Errors
+                        Country
+                      </th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                        Errors / Warnings
                       </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {csvData.map((lead, index) => (
                       <tr key={index} className={lead.isValid ? 'bg-white' : 'bg-red-50'}>
-                        <td className="px-3 py-2 text-sm text-gray-900">{lead.rowIndex - 1}</td>
+                        <td className="px-3 py-2 text-sm text-gray-900">{lead.rowIndex}</td>
                         <td className="px-3 py-2">
                           {lead.isValid ? (
                             <span className="inline-flex px-2 py-1 text-xs font-semibold text-green-800 bg-green-100 rounded-full">
@@ -309,7 +356,20 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                         </td>
                         <td className="px-3 py-2 text-sm text-gray-900">{lead.email || '-'}</td>
                         <td className="px-3 py-2 text-sm text-gray-900">{lead.companyName || '-'}</td>
-                        <td className="px-3 py-2 text-sm text-red-600">{lead.errors.join(', ') || '-'}</td>
+                        <td className="px-3 py-2 text-sm text-gray-900">{lead.countryCode || '–'}</td>
+                        <td className="px-3 py-2 text-sm">
+                          {lead.errors.map((error) => (
+                            <div key={error} className="text-red-700">
+                              Error: {error}
+                            </div>
+                          ))}
+                          {lead.warnings.map((warning) => (
+                            <div key={warning} className="text-amber-800">
+                              Warning: {warning}
+                            </div>
+                          ))}
+                          {!lead.errors.length && !lead.warnings.length && '–'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -323,7 +383,11 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
           <div className="px-6 py-4 border-t border-gray-200 flex justify-between">
             <div className="flex space-x-3">
               <button
-                onClick={() => setCsvData([])}
+                onClick={() => {
+                  setCsvData([])
+                  setImportResult(null)
+                }}
+                disabled={importMutation.isPending}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Clear Data
@@ -334,14 +398,18 @@ export const CsvImportModal: FC<CsvImportModalProps> = ({ isOpen, onClose }) => 
                 onClick={handleClose}
                 className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
-                Cancel
+                {importResult ? 'Done' : 'Cancel'}
               </button>
               <button
                 onClick={handleImport}
-                disabled={stats.valid === 0 || importMutation.isPending}
+                disabled={stats.valid === 0 || importMutation.isPending || !!importResult}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {importMutation.isPending ? 'Importing...' : `Import ${stats.valid} Valid Leads`}
+                {importResult
+                  ? 'Import complete'
+                  : importMutation.isPending
+                    ? 'Importing...'
+                    : `Import ${stats.valid} Valid Leads`}
               </button>
             </div>
           </div>
